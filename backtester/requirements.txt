@@ -1,7 +1,0 @@
-pandas>=2.0
-numpy>=1.26
-matplotlib>=3.8
-scipy>=1.12
-requests>=2.31
-python-dotenv>=1.0
-jupyter>=1.0
