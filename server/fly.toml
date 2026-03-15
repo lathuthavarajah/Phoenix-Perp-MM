@@ -1,0 +1,18 @@
+app = "phoenix-exec-quality-server"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 500
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

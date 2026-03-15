@@ -1,0 +1,15 @@
+# Rust
+server/target/
+server/.env
+
+# Node
+web/node_modules/
+web/dist/
+web/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

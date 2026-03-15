@@ -1,0 +1,39 @@
+[package]
+name = "phoenix-exec-quality"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web server
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors"] }
+
+# WebSocket client (for Hyperliquid feeds)
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+
+# HTTP client (for REST polling)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Solana + Phoenix
+solana-client = "2.0"
+solana-sdk = "2.0"
+solana-account-decoder = "2.0"
+
+# Concurrency utilities
+futures-util = "0.3"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Environment
+dotenvy = "0.15"
