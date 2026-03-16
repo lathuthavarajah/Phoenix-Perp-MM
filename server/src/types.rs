@@ -1,96 +1,64 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Venue {
-    Phoenix,
-    Hyperliquid,
-    Drift,
-    Binance,
+/// Side of an order or fill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Side {
+    Bid,
+    Ask,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TradingPair {
-    #[serde(rename = "SOL-PERP")]
-    SolPerp,
-    #[serde(rename = "BTC-PERP")]
-    BtcPerp,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrderbookLevel {
+/// A single quote level to place on the book.
+#[derive(Debug, Clone)]
+pub struct QuoteLevel {
+    pub side: Side,
     pub price: f64,
     pub size: f64,
-    pub notional: f64,
+    pub level: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Orderbook {
-    pub venue: Venue,
-    pub pair: TradingPair,
-    pub bids: Vec<OrderbookLevel>,
-    pub asks: Vec<OrderbookLevel>,
-    pub timestamp_ms: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpreadSnapshot {
-    pub venue: Venue,
-    pub pair: TradingPair,
-    pub bid_price: f64,
-    pub ask_price: f64,
-    pub mid_price: f64,
-    pub spread_absolute: f64,
-    pub spread_bps: f64,
-    pub timestamp_ms: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FundingRateSnapshot {
-    pub venue: Venue,
-    pub pair: TradingPair,
-    pub rate_hourly: f64,
-    pub rate_annualized: f64,
-    pub next_funding_ms: u64,
-    pub timestamp_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Side {
-    Buy,
-    Sell,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SlippageEstimate {
-    pub venue: Venue,
-    pub pair: TradingPair,
+/// A fill event from the exchange.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct Fill {
     pub side: Side,
-    pub notional_usd: f64,
-    pub avg_fill_price: f64,
-    pub mid_price: f64,
-    pub slippage_bps: f64,
-    pub depth_consumed_usd: f64,
-    pub timestamp_ms: u64,
+    pub price: f64,
+    pub size: f64,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionQualityScore {
-    pub venue: Venue,
-    pub pair: TradingPair,
-    pub spread_score: f64,
-    pub depth_score: f64,
-    pub funding_score: f64,
-    pub composite_score: f64,
-    pub timestamp_ms: u64,
+/// An orderbook level from Phoenix.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct BookLevel {
+    pub price: f64,
+    pub size: f64,
 }
 
-/// Envelope sent over WebSocket to all frontend clients
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data", rename_all = "snake_case")]
-pub enum WsMessage {
-    Orderbook(Orderbook),
-    Funding(FundingRateSnapshot),
-    Scores(Vec<ExecutionQualityScore>),
+/// Snapshot of the current orderbook.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct OrderbookSnapshot {
+    pub bids: Vec<BookLevel>,
+    pub asks: Vec<BookLevel>,
+}
+
+#[allow(dead_code)]
+impl OrderbookSnapshot {
+    /// Best bid price, if any.
+    pub fn best_bid(&self) -> Option<f64> {
+        self.bids.first().map(|l| l.price)
+    }
+
+    /// Best ask price, if any.
+    pub fn best_ask(&self) -> Option<f64> {
+        self.asks.first().map(|l| l.price)
+    }
+
+    /// Mid price from best bid/ask.
+    pub fn mid_price(&self) -> Option<f64> {
+        match (self.best_bid(), self.best_ask()) {
+            (Some(b), Some(a)) => Some((b + a) / 2.0),
+            _ => None,
+        }
+    }
 }

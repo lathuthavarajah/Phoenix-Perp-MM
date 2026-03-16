@@ -1,45 +1,55 @@
-mod aggregator;
-mod broadcast;
-mod feeds;
+mod cli;
+mod config;
+mod engine;
+mod error;
+mod inventory;
 mod metrics;
-mod state;
+mod oracle;
+mod phoenix_client;
+mod risk;
+mod strategy;
 mod types;
 
-use axum::{routing::get, Router};
-use tower_http::cors::{Any, CorsLayer};
+use anyhow::Result;
+use clap::Parser;
+use std::path::Path;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::broadcast::ws_handler;
-use crate::state::AppState;
+use crate::cli::{Cli, Command};
+use crate::config::Config;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
+    // Load .env if present
     dotenvy::dotenv().ok();
 
+    // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("phoenix_exec_quality=debug".parse()?)
-                .add_directive("tower_http=info".parse()?),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("phoenix_mm=info")),
         )
         .init();
 
-    let state = AppState::new();
-    aggregator::start_feeds(state.clone()).await;
+    let cli = Cli::parse();
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_headers(Any);
+    // Load config
+    let config = Config::load(Path::new(&cli.config))?;
 
-    let app = Router::new()
-        .route("/ws", get(ws_handler))
-        .route("/health", get(|| async { "ok" }))
-        .with_state(state)
-        .layer(cors);
+    match cli.command {
+        Command::Config => {
+            println!("{config}");
+        }
+        Command::Status => {
+            println!("Status: market maker not running (use `run` to start)");
+        }
+        Command::Run => {
+            info!("Phoenix Inventory-Aware Market Maker starting");
+            let mut engine = engine::Engine::new(config);
+            engine.run().await?;
+        }
+    }
 
-    let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("Server listening on {addr}");
-    axum::serve(listener, app).await?;
     Ok(())
 }
