@@ -3,9 +3,6 @@ members = [
     "programs/phoenix-mm-onchain",
     "cranker",
 ]
-exclude = [
-    "server",
-]
 resolver = "2"
 
 [workspace.dependencies]

@@ -1,12 +1,9 @@
 # Rust
-server/target/
-server/.env
 target/
 
 # Anchor / Solana
 .anchor/
 test-ledger/
-programs/phoenix-mm-onchain/target/
 
 # IDE
 .vscode/
