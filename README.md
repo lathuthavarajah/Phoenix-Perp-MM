@@ -1,12 +1,10 @@
 # Phoenix On-Chain Market Maker
 
-On-chain Avellaneda-Stoikov market maker for [Phoenix DEX](https://www.phoenix.trade/) on Solana. An Anchor program that computes inventory-skewed quotes directly on-chain via CPI into Phoenix, with a lightweight off-chain cranker.
+Built March 14-16, 2025 as a pitch for the Ellipsis Labs internship. I wanted to show I could build the kind of thing the team actually ships — a Solana program that does real market-making math on-chain and talks to Phoenix via CPI.
 
-## Why This Exists
+The reference [`phoenix-onchain-mm`](https://github.com/Ellipsis-Labs/phoenix-onchain-mm) uses fixed spreads. This one uses Avellaneda-Stoikov inventory-skewed quoting instead: when you're long, it tightens the ask to sell. When you're short, it tightens the bid to buy. The spread widens with volatility. All the math runs on-chain in fixed-point i128 (no floats on Solana).
 
-The reference [`phoenix-onchain-market-maker`](https://github.com/Ellipsis-Labs/phoenix-onchain-mm) uses fixed spreads. This program advances it with real quoting theory — the same inventory management techniques used at professional trading firms.
-
-## Architecture
+## How it works
 
 ```
 Pyth Oracle ──► On-Chain Program ──► Phoenix DEX
@@ -24,53 +22,42 @@ Pyth Oracle ──► On-Chain Program ──► Phoenix DEX
               (calls update_quotes every 2s)
 ```
 
-## Quoting Algorithm
+A cranker on your machine sends a transaction every 2 seconds. The Solana program reads the Pyth price, runs the quoting math, does a risk check, then CPIs into Phoenix to cancel stale orders and place fresh ones.
 
-**Avellaneda-Stoikov with inventory skew (fixed-point i128):**
+Three instructions: `initialize` (set up config + state PDAs with your strategy params), `update_quotes` (the main loop), and `close` (tear down and reclaim rent).
+
+## The math
 
 ```
 q = (position / max_position).clamp(-1, 1)
 
-reservation_price = fair_price * (1 - γ * q * σ²)
-half_spread       = max(base_spread_bps, σ * γ) * fair_price / 10000
+reservation = fair_price * (1 - γ * q * σ²)
+half_spread = max(base_spread_bps, σ * γ) * fair_price / 10000
 
-bid = reservation_price - half_spread
-ask = reservation_price + half_spread
+bid = reservation - half_spread
+ask = reservation + half_spread
 ```
 
-All math uses `i128` with two scale factors — no floats on Solana:
-- **PRICE_SCALE** = 1e10 for prices
-- **PARAM_SCALE** = 1e6 for parameters (gamma, size_decay)
+Since Solana doesn't allow floats, everything uses i128 with two scale factors: `PRICE_SCALE = 1e10` for prices and `PARAM_SCALE = 1e6` for parameters like gamma and size decay. Intermediate products max out around 9.6e29, well within i128's range (~1.7e38).
 
-| State | Effect |
-|-------|--------|
-| **Flat** (q=0) | Symmetric quotes around fair price |
-| **Long** (q>0) | Reservation drops below fair → ask tightens → sells to reduce |
-| **Short** (q<0) | Reservation rises above fair → bid tightens → buys to reduce |
-| **High vol** | Spread widens to compensate for adverse selection |
+The fixed-point output is cross-validated against an f64 reference implementation — the tests confirm they match within 0.01 tolerance.
 
-## Instructions
+## Try it
 
-| Instruction | Description |
-|-------------|-------------|
-| `initialize` | Create MmConfig + MmState PDAs with strategy/risk params |
-| `update_quotes` | Read Pyth → compute A-S quotes → risk check → CPI cancel all → CPI place bids+asks |
-| `close` | Close accounts, reclaim rent |
-
-## Quick Start
-
-**Run tests (no validator needed):**
 ```bash
+# run the 17 unit tests (no validator needed)
 cargo test -p phoenix-mm-onchain
+
+# check it compiles
+cargo check -p phoenix-mm-onchain
+cargo check -p phoenix-mm-cranker
+
+# full BPF build (needs Anchor CLI + Solana toolchain)
+anchor build
 ```
 
-**Build the program:**
-```bash
-cargo check -p phoenix-mm-onchain   # quick check
-anchor build                         # full BPF compile (needs Anchor CLI)
-```
+To actually deploy and crank on devnet:
 
-**Run the cranker (needs deployed program + devnet setup):**
 ```bash
 cargo run -p phoenix-mm-cranker -- \
   --keypair ~/.config/solana/id.json \
@@ -80,43 +67,33 @@ cargo run -p phoenix-mm-cranker -- \
   --interval 2
 ```
 
-## Account Layout
-
-**MmConfig PDA** — seeds: `[b"mm_config", authority, phoenix_market]`
-- Strategy: base_spread_bps, gamma_scaled, num_levels, level_spacing_bps, base_size_lots, size_decay_scaled
-- Risk: max_position_lots, max_drawdown_quote_lots, max_oracle_staleness_secs
-- volatility_bps (config override, or 0 to derive from Pyth confidence)
-
-**MmState PDA** — seeds: `[b"mm_state", config]`
-- position_lots, avg_entry_price_scaled, realized_pnl_atoms, peak_pnl_atoms
-- total_volume_lots, crank_count, last_crank_ts
-
-## Testing
-
-17 unit tests covering:
-- **A-S quoting**: symmetric at flat, skew direction, vol widens spread, position clamp, base spread floor
-- **Cross-validation**: fixed-point results verified against f64 reference (flat, long, short+high vol)
-- **Pyth conversion**: price scaling, exponent handling, negative rejection
-- **Level computation**: size decay, price spacing, minimum sizes
-
-## Project Structure
+## What's in here
 
 ```
 programs/phoenix-mm-onchain/src/
-  lib.rs           # Program entry: initialize, update_quotes, close
-  state.rs         # MmConfig + MmState account structs (PDAs)
-  fixed_math.rs    # Fixed-point A-S quoting (i128 scaled integers)
-  phoenix_cpi.rs   # CPI wrappers for Phoenix cancel/place
-  errors.rs        # Custom error enum
-  instructions/    # Instruction handlers
+  lib.rs           # program entry — initialize, update_quotes, close
+  state.rs         # MmConfig + MmState PDAs
+  fixed_math.rs    # the i128 A-S quoting engine + 17 tests
+  phoenix_cpi.rs   # raw CPI into Phoenix (cancel all, place batch post-only)
+  errors.rs        # StaleOracle, InvalidPrice, MaxDrawdownExceeded, etc.
+  instructions/    # handler for each instruction
+
 cranker/src/
-  main.rs          # Off-chain loop: call update_quotes every 2s
+  main.rs          # off-chain loop that pokes update_quotes
 ```
 
-## Key Design Decisions
+## Design choices
 
-- **No floats**: All on-chain math uses i128 fixed-point, cross-validated against f64 reference implementation.
-- **Raw CPI**: Phoenix instructions built manually to avoid dependency version conflicts with Anchor.
-- **Post-only orders**: Uses `PlaceMultiplePostOnlyOrdersWithFreeFunds` for efficient batch quoting.
-- **Reduce-only mode**: Skips bids at max long, skips asks at max short — position naturally decays.
-- **Pyth oracle**: Uses Pyth push-oracle for fair price; confidence interval can derive volatility.
+**Raw CPI instead of importing phoenix-v1.** Phoenix v0.2.4 pins solana-program 1.14, which conflicts with Anchor 0.30's requirement for 1.17+. Rather than downgrading Anchor or forking Phoenix, I built the instruction data manually — it's just discriminant bytes + Borsh-serialized order packets.
+
+**Post-only batch orders.** Uses `PlaceMultiplePostOnlyOrdersWithFreeFunds` (discriminant 17) to place all bid and ask levels in a single CPI. Cheaper than individual limit orders.
+
+**Reduce-only at position limits.** When at max long, bids are skipped entirely (only asks remain). At max short, asks are skipped. Position decays naturally without a separate unwind mechanism.
+
+**Volatility from Pyth confidence.** If you don't set a fixed `volatility_bps`, the program derives it from the Pyth confidence interval (`conf / price * 10000`), floored at 1%.
+
+## Account layout
+
+**MmConfig** `[b"mm_config", authority, market]` — strategy params (spread, gamma, levels, sizes) + risk params (max position, max drawdown, oracle staleness). Set once via `initialize`.
+
+**MmState** `[b"mm_state", config]` — runtime tracking: position in lots, avg entry price, realized PnL, peak PnL watermark, volume, crank count, last crank timestamp.
