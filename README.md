@@ -1,6 +1,6 @@
 # Phoenix On-Chain Market Maker
 
-Built March 14-16, 2025 as a pitch for the Ellipsis Labs internship. I wanted to show I could build the kind of thing the team actually ships — a Solana program that does real market-making math on-chain and talks to Phoenix via CPI.
+Built March 14-16, 2025 as a pitch for the Ellipsis Labs internship. I wanted to show I could build the kind of thing the team actually ships, a Solana program that does real market-making math on-chain and talks to Phoenix via CPI.
 
 The reference [`phoenix-onchain-mm`](https://github.com/Ellipsis-Labs/phoenix-onchain-mm) uses fixed spreads. This one uses Avellaneda-Stoikov inventory-skewed quoting instead: when you're long, it tightens the ask to sell. When you're short, it tightens the bid to buy. The spread widens with volatility. All the math runs on-chain in fixed-point i128 (no floats on Solana).
 
@@ -40,7 +40,7 @@ ask = reservation + half_spread
 
 Since Solana doesn't allow floats, everything uses i128 with two scale factors: `PRICE_SCALE = 1e10` for prices and `PARAM_SCALE = 1e6` for parameters like gamma and size decay. Intermediate products max out around 9.6e29, well within i128's range (~1.7e38).
 
-The fixed-point output is cross-validated against an f64 reference implementation — the tests confirm they match within 0.01 tolerance.
+The fixed-point output is cross-validated against an f64 reference implementation, the tests confirm they match within 0.01 tolerance.
 
 ## Try it
 
@@ -84,7 +84,7 @@ cranker/src/
 
 ## Design choices
 
-**Raw CPI instead of importing phoenix-v1.** Phoenix v0.2.4 pins solana-program 1.14, which conflicts with Anchor 0.30's requirement for 1.17+. Rather than downgrading Anchor or forking Phoenix, I built the instruction data manually — it's just discriminant bytes + Borsh-serialized order packets.
+**Raw CPI instead of importing phoenix-v1.** Phoenix v0.2.4 pins solana-program 1.14, which conflicts with Anchor 0.30's requirement for 1.17+. Rather than downgrading Anchor or forking Phoenix, I built the instruction data manually, it's just discriminant bytes + Borsh-serialized order packets.
 
 **Post-only batch orders.** Uses `PlaceMultiplePostOnlyOrdersWithFreeFunds` (discriminant 17) to place all bid and ask levels in a single CPI. Cheaper than individual limit orders.
 
