@@ -10,8 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Clippy + Test
+  server:
+    name: Server — Clippy + Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,3 +28,17 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: Test
         run: cargo test
+
+  onchain:
+    name: On-chain Program — Check + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check program
+        run: cargo check -p phoenix-mm-onchain
+      - name: Test fixed-point math
+        run: cargo test -p phoenix-mm-onchain
+      - name: Check cranker
+        run: cargo check -p phoenix-mm-cranker

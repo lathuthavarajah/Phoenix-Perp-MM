@@ -128,6 +128,71 @@ server/src/
   error.rs             # Error types
 ```
 
+## On-Chain Program (`programs/phoenix-mm-onchain`)
+
+An **on-chain Anchor program** that runs the same Avellaneda-Stoikov quoting directly on Solana via CPI into Phoenix DEX. No floats — all math uses i128 fixed-point arithmetic.
+
+### Architecture
+
+```
+Pyth Oracle ──► On-Chain Program ──► Phoenix DEX
+                    │                    (CPI)
+                    │
+                ┌───┴────────────────┐
+                │  Fixed-Point A-S   │
+                │  Quoting Engine    │
+                │                    │
+                │  MmConfig PDA      │
+                │  MmState PDA       │
+                └───┬────────────────┘
+                    │
+              Off-chain Cranker
+              (calls update_quotes every 2s)
+```
+
+### Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `initialize` | Create MmConfig + MmState PDAs with strategy/risk params |
+| `update_quotes` | Read Pyth → compute A-S quotes → risk check → CPI cancel all → CPI place bids+asks |
+| `close` | Close accounts, reclaim rent |
+
+### Fixed-Point Math
+
+All on-chain math uses `i128` with two scale factors:
+- **PRICE_SCALE** = 1e10 for prices
+- **PARAM_SCALE** = 1e6 for parameters (gamma, size_decay)
+
+The quoting formula matches the off-chain f64 implementation, verified by 17 cross-validation unit tests.
+
+### Cranker
+
+The `phoenix-mm-cranker` binary calls `update_quotes` on a configurable interval:
+
+```bash
+cargo run -p phoenix-mm-cranker -- \
+  --keypair ~/.config/solana/id.json \
+  --rpc-url https://api.devnet.solana.com \
+  --market <PHOENIX_MARKET_PUBKEY> \
+  --pyth-feed <PYTH_FEED_PUBKEY> \
+  --interval 2
+```
+
+### On-Chain Structure
+
+```
+programs/phoenix-mm-onchain/src/
+  lib.rs           # Program entry: initialize, update_quotes, close
+  state.rs         # MmConfig + MmState account structs (PDAs)
+  fixed_math.rs    # Fixed-point A-S quoting (i128 scaled integers)
+  phoenix_cpi.rs   # CPI wrappers for Phoenix cancel/place
+  errors.rs        # Custom error enum
+  instructions/    # Instruction handlers
+cranker/src/
+  main.rs          # Off-chain loop: call update_quotes every 2s
+```
+
 ## Key Design Decisions
 
 - **Trait-based Phoenix client**: Core logic compiles and tests without the full Phoenix SDK dependency tree. Live SDK behind `--features live`.
