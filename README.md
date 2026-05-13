@@ -1,7 +1,5 @@
 # Phoenix On-Chain Market Maker
 
-Built March 14-16, 2025 as a pitch for the Ellipsis Labs internship. I wanted to show I could build the kind of thing the team actually ships, a Solana program that does real market-making math on-chain and talks to Phoenix via CPI.
-
 The reference [`phoenix-onchain-mm`](https://github.com/Ellipsis-Labs/phoenix-onchain-mm) uses fixed spreads. This one uses Avellaneda-Stoikov inventory-skewed quoting instead: when you're long, it tightens the ask to sell. When you're short, it tightens the bid to buy. The spread widens with volatility. All the math runs on-chain in fixed-point i128 (no floats on Solana).
 
 ## How it works
